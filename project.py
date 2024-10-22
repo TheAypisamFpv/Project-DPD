@@ -80,7 +80,7 @@ map_folium = folium.Map(location=[center_lat, center_long], zoom_start=12)
 # | 2          | 49.45   | 1.11   |
 
 # Charger les points de livraison depuis un fichier Excel
-df = pd.read_excel('C:/Users/maxco/Cesi/CPIA3/Bloc 1 algorithm/project/deliveries_data.xlsx')  # Assure-toi que le fichier se trouve dans le bon chemin
+df = pd.read_excel('deliveries_data.xlsx')  # Assure-toi que le fichier se trouve dans le bon chemin
 
 # Ajouter chaque point de livraison comme marqueur sur la carte
 for index, row in df.iterrows():
