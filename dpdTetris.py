@@ -342,5 +342,5 @@ class Piece:
                                      2)
 
 if __name__ == "__main__":
-    game = TetrisGame(GameSize=(40, 30))
+    game = TetrisGame(GameSize=(10, 20))
     print(game.GameLoop())
