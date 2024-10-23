@@ -257,7 +257,7 @@ class TetrisGame:
             pygame.display.flip()
             clock.tick(60)  # Run the game loop at 60 frames per second
 
-            print([piece.type for piece in Pieces], end='\r')
+            textPieces = [piece.type for piece in Pieces]
 
             move_down_timer += clock.get_time()
             if move_down_timer >= move_down_interval:
@@ -270,7 +270,7 @@ class TetrisGame:
                     Pieces.append(CurrentPiece)
 
         pygame.quit()
-        return Pieces
+        return textPieces
 
 class Piece:
     """Represents a Tetris piece."""
@@ -327,4 +327,4 @@ class Piece:
 
 if __name__ == "__main__":
     game = TetrisGame(GameSize=(7, 7))
-    game.GameLoop()
+    print(game.GameLoop())
