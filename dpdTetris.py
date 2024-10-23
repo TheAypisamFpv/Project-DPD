@@ -15,7 +15,7 @@ class TetrisGame:
         self.BLOCK_SIZE = 30
 
         self.Pieces = {
-            "line": np.array([
+            "I": np.array([
                 [0, 0, 0, 0],
                 [0, 0, 0, 0],
                 [1, 1, 1, 1],
@@ -217,7 +217,7 @@ class TetrisGame:
         """
         if self.CanSpawnNewPiece():
             shape = random.choice(list(self.Pieces.keys()))
-            return Piece(3, 0, shape, self)
+            return Piece(int((self.GameMatrixSize[0]-2)/2), 0, shape, self)
         else:
             return None
 
@@ -325,5 +325,5 @@ class Piece:
                                      2)
 
 if __name__ == "__main__":
-    game = TetrisGame(GameSize=(7, 7))
+    game = TetrisGame(GameSize=(10, 15))
     print(game.GameLoop())
