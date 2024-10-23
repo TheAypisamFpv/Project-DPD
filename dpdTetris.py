@@ -314,9 +314,8 @@ class Piece:
                                          )
                                      )
 
-                    outline_color = tuple(int(c * self.game.PIECE_OUTLINE) for c in self.color)
                     pygame.draw.rect(screen,
-                                     outline_color,
+                                     tuple(int(c * self.game.PIECE_OUTLINE) for c in self.color),
                                      pygame.Rect(
                                          (self.x + j) * self.game.BLOCK_SIZE,
                                          (self.y + i) * self.game.BLOCK_SIZE,
