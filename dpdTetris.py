@@ -1,62 +1,77 @@
-import pygame
+import pygame, random, os
 import numpy as np
-import random
+
 
 class TetrisGame:
-    """Represents the Tetris game environment."""
-    
-    def __init__(self, GameSize: tuple = (10, 15)):
-        """Initializes the game matrix, window dimensions, block size, piece shapes, colors, and game parameters."""
+    def __init__(self, GameSize: tuple = (10, 15), BlockSize=30, CustomPieces=None):
+        """Initializes the game with the specified size and custom pieces.
+
+        Args:
+            GameSize (tuple): The size of the game matrix (width, height). (default=(10, 15))
+            BlockSize (int): The size of each block in pixels. (default=30)
+            CustomPieces (dict): A dictionary of custom pieces to use in the game. (default=standard pieces)
+        """
         self.GameMatrixSize = GameSize
         self.GameMatrix = [[0 for x in range(self.GameMatrixSize[0])] for y in range(self.GameMatrixSize[1])]
 
-        self.WINDOW_WIDTH = self.GameMatrixSize[0] * 30
-        self.WINDOW_HEIGHT = self.GameMatrixSize[1] * 30
-        self.BLOCK_SIZE = 30
+        self.BLOCK_SIZE = BlockSize
+        self.WINDOW_WIDTH = self.GameMatrixSize[0] * self.BLOCK_SIZE
+        self.WINDOW_HEIGHT = self.GameMatrixSize[1] * self.BLOCK_SIZE
 
-        self.Pieces = {
-            "I": np.array([
-                [0, 0, 0, 0],
-                [0, 0, 0, 0],
-                [1, 1, 1, 1],
-                [0, 0, 0, 0]
-                ]),
+        #check if the windows size is greater than the screen size
+        if self.WINDOW_WIDTH > 1920 or self.WINDOW_HEIGHT > 1080:
+            # Warn the user
+            print(f"\033[91m\n! WARNING !\nThe window size generated is greater than 1920w or 1080h ({self.WINDOW_WIDTH} x {self.WINDOW_HEIGHT}), press enter to continue\033[0m")
+            input()
+        
 
-            "square": np.array([
-                [1, 1],
-                [1, 1]
-                ]),
+        if not CustomPieces:
+            self.Pieces = {
+                "I": np.array([
+                    [0, 0, 0, 0],
+                    [0, 0, 0, 0],
+                    [1, 1, 1, 1],
+                    [0, 0, 0, 0]
+                    ]),
 
-            "T": np.array([
-                [0, 0, 0],
-                [1, 1, 1],
-                [0, 1, 0]
-                ]),
+                "square": np.array([
+                    [1, 1],
+                    [1, 1]
+                    ]),
 
-            "L": np.array([
-                [0, 0, 0],
-                [1, 1, 1],
-                [1, 0, 0]
-                ]),
+                "T": np.array([
+                    [0, 0, 0],
+                    [1, 1, 1],
+                    [0, 1, 0]
+                    ]),
 
-            "J": np.array([
-                [0, 0, 0],
-                [1, 1, 1],
-                [0, 0, 1]
-                ]),
+                "L": np.array([
+                    [0, 0, 0],
+                    [1, 1, 1],
+                    [1, 0, 0]
+                    ]),
 
-            "S": np.array([
-                [0, 0, 0],
-                [0, 1, 1],
-                [1, 1, 0]
-                ]),
+                "J": np.array([
+                    [0, 0, 0],
+                    [1, 1, 1],
+                    [0, 0, 1]
+                    ]),
 
-            "Z": np.array([
-                [0, 0, 0],
-                [1, 1, 0],
-                [0, 1, 1]
-                ])
-        }
+                "S": np.array([
+                    [0, 0, 0],
+                    [0, 1, 1],
+                    [1, 1, 0]
+                    ]),
+
+                "Z": np.array([
+                    [0, 0, 0],
+                    [1, 1, 0],
+                    [0, 1, 1]
+                    ])
+            }
+        else:
+            self.Pieces = CustomPieces
+
 
         self.PIECE_COLORS = [
             (205, 133, 63),   # Peru (Cardboard Brown)
@@ -72,7 +87,7 @@ class TetrisGame:
         self.GAME_COLOR = (169, 169, 169)
         self.LimitLine = 2
 
-    def InitializeGame(self):
+    def InitializeGameMatrix(self):
         """Resets the game matrix to the initial state."""
         self.GameMatrix = [[0 for x in range(self.GameMatrixSize[0])] for y in range(self.GameMatrixSize[1])]
 
@@ -106,6 +121,9 @@ class TetrisGame:
 
     def ClearPiece(self, piece):
         """Clears a piece from the game matrix.
+
+        
+        used when moving or rotating a piece to clear its previous position.
         
         Args:
             piece: The piece to be cleared.
@@ -224,21 +242,21 @@ class TetrisGame:
     def GameLoop(self):
         """Runs the main game loop, handling events and updating the game state."""
         pygame.init()
-        screen = pygame.display.set_mode((self.WINDOW_WIDTH, self.WINDOW_HEIGHT))
-        clock = pygame.time.Clock()
-        self.InitializeGame()
+        Screen = pygame.display.set_mode((self.WINDOW_WIDTH, self.WINDOW_HEIGHT))
+        Clock = pygame.time.Clock()
+        self.InitializeGameMatrix()
         CurrentPiece = self.SpawnNewPiece()
 
         Pieces = [CurrentPiece]
 
-        running = True
-        move_down_timer = 0
-        move_down_interval = 500  # milliseconds
+        Running = True
+        MoveDownTimer = 0
+        MoveDownInterval = 500  # milliseconds
 
-        while running:
+        while Running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running = False
+                    Running = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_LEFT:
                         self.MovePiece(CurrentPiece, "left")
@@ -252,29 +270,28 @@ class TetrisGame:
                             CurrentPiece.rotate()
                             self.PlacePiece(CurrentPiece)
 
-            screen.fill(self.GAME_COLOR)
-            self.DrawGameMatrix(screen, Pieces)
+            Screen.fill(self.GAME_COLOR)
+            self.DrawGameMatrix(Screen, Pieces)
             pygame.display.flip()
-            clock.tick(60)  # Run the game loop at 60 frames per second
+            Clock.tick(60)  # Run the game loop at 60 frames per second
 
-            textPieces = [piece.type for piece in Pieces]
+            PiecesText = [piece.type for piece in Pieces]
 
-            move_down_timer += clock.get_time()
-            if move_down_timer >= move_down_interval:
-                move_down_timer = 0
+            MoveDownTimer += Clock.get_time()
+            if MoveDownTimer >= MoveDownInterval:
+                MoveDownTimer = 0
                 if not self.MovePiece(CurrentPiece, "down"):
                     CurrentPiece = self.SpawnNewPiece()
                     if CurrentPiece is None:
-                        running = False
+                        Running = False
 
                     Pieces.append(CurrentPiece)
 
         pygame.quit()
-        return textPieces
+        return PiecesText
+
 
 class Piece:
-    """Represents a Tetris piece."""
-    
     def __init__(self, x:int, y:int, shape:str, game:TetrisGame):
         """Initializes a piece with its position, shape, color, and associated game.
         
@@ -325,5 +342,5 @@ class Piece:
                                      2)
 
 if __name__ == "__main__":
-    game = TetrisGame(GameSize=(10, 15))
+    game = TetrisGame(GameSize=(40, 30))
     print(game.GameLoop())
