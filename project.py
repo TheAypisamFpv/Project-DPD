@@ -11,8 +11,24 @@ from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 # 1. Téléchargement du graphe routier de Rouen
 # -------------------------------
 
-# Define the center coordinates of your map (example: Rouen, France)
-center_coords = (49.4431, 1.0993)
+# Load points from the Excel file
+def load_points_from_excel(file_path):
+    df = pd.read_excel(file_path)
+    points = df[['lat', 'long']].values.tolist()
+    return points, df
+
+# Example file path
+file_path = 'deliveries_data.xlsx'
+
+# Load points
+points, df = load_points_from_excel(file_path)
+
+# Ensure points is a list of tuples (latitude, longitude)
+if not points or not all(isinstance(point, (list, tuple)) and len(point) == 2 for point in points):
+    raise ValueError("The points list is not correctly formatted.")
+
+# Use the first point as the origin for the TSP
+origin = points[0]
 
 # Function to find cities within a 10-kilometer radius using Overpass API
 def find_nearby_cities(center_coords, radius_km=10):
@@ -38,8 +54,8 @@ def find_nearby_cities(center_coords, radius_km=10):
     
     return nearby_cities
 
-# Update the places list
-places = find_nearby_cities(center_coords)
+# Find nearby cities based on the origin
+places = find_nearby_cities(origin)
 
 # Ensure places is a list of strings
 if isinstance(places, list) and all(isinstance(place, str) for place in places):
@@ -47,54 +63,46 @@ if isinstance(places, list) and all(isinstance(place, str) for place in places):
 else:
     raise ValueError("The places list is not correctly formatted.")
 
-# Récupérer les données du réseau routier (drivable uniquement)
-G = ox.graph_from_place(places, network_type='drive')
-
 # Add travel time to each edge in the graph
 for u, v, k, data in G.edges(data=True, keys=True):
     if 'length' in data and 'maxspeed' in data:
         # Convert maxspeed to km/h if it's a string
         if isinstance(data['maxspeed'], list):
-            maxspeed = float(data['maxspeed'][0])
+            maxspeed_str = data['maxspeed'][0]
         else:
-            maxspeed = float(data['maxspeed'])
-        # Calculate travel time in seconds
-        data['travel_time'] = data['length'] / (maxspeed * 1000 / 3600)
+            maxspeed_str = data['maxspeed']
+        
+        try:
+            if 'rural' in maxspeed_str.lower():
+                maxspeed = 80.0
+            else:
+                maxspeed = float(maxspeed_str)
+            # Calculate travel time in seconds
+            data['travel_time'] = data['length'] / (maxspeed * 1000 / 3600)
+        except ValueError:
+            # Skip if maxspeed is not a numeric value
+            continue
 
-# Visualiser une première fois le graphe pour vérifier sa création (optionnel)
+# Visualize the graph (optional)
 ox.plot_graph(G)
 
-# -------------------------------
-# 2. Création d'une carte Folium centrée sur Rouen
-# -------------------------------
-center_lat, center_long = 49.4431, 1.0993  # Coordonnées approximatives de Rouen
-map_folium = folium.Map(location=[center_lat, center_long], zoom_start=12)
+# Create the map centered on the origin
+map_folium = folium.Map(location=origin, zoom_start=12)
 
-# -------------------------------
-# 4. Ajout des points de livraison à partir d'un fichier Excel
-# -------------------------------
-# Exemple de structure du fichier Excel : 
-# | Package ID | lat     | long   |
-# |------------|---------|--------|
-# | 1          | 49.44   | 1.10   |
-# | 2          | 49.45   | 1.11   |
+# Add points to the map
+for point in points:
+    folium.Marker(location=point).add_to(map_folium)
 
-# Charger les points de livraison depuis un fichier Excel
-df = pd.read_excel('deliveries_data.xlsx')  # Assure-toi que le fichier se trouve dans le bon chemin
-
-# Ajouter chaque point de livraison comme marqueur sur la carte
-for index, row in df.iterrows():
-    folium.Marker([row['lat'], row['long']], popup=f"Package {row['Package ID']}").add_to(map_folium)
+# Save the map to an HTML file
+map_folium.save('map.html')
 
 # -------------------------------
 # 5. Calculer et afficher le chemin le plus rapide pour la livraison
 # -------------------------------
 
 # Define the starting point (point of collection)
-start_point = (49.4431, 1.0993)  # Example coordinates for the starting point
+delivery_points = []
 
-# Add the starting point to the delivery points
-delivery_points = [(start_point[0], start_point[1], 'Start')]
 for index, row in df.iterrows():
     delivery_points.append((row['lat'], row['long'], f"Package {row['Package ID']}"))
 
