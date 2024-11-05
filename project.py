@@ -32,6 +32,7 @@ if not points or not all(isinstance(point, (list, tuple)) and len(point) == 2 fo
 
 # Use the first point as the origin for the TSP
 origin = points[0]
+origin_city = 49.443512, 1.098445
 
 # Function to find cities within a 10-kilometer radius using Overpass API
 def find_nearby_cities(center_coords, radius_km=10):
@@ -58,7 +59,7 @@ def find_nearby_cities(center_coords, radius_km=10):
     return nearby_cities
 
 # Find nearby cities based on the origin
-places = find_nearby_cities(origin)
+places = find_nearby_cities(origin_city)
 
 # Ensure places is a list of strings
 if isinstance(places, list) and all(isinstance(place, str) for place in places):
