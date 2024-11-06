@@ -21,7 +21,7 @@ def load_points_from_excel(file_path):
     return points, names  # Change this line
 
 # Example file path
-file_path = 'deliveries_data.xlsx'
+file_path = 'addresses_found.xlsx'
 
 # Load points
 points, names = load_points_from_excel(file_path)
@@ -106,8 +106,8 @@ for u, v, k, data in G.edges(data=True, keys=True):
         data['travel_time'] = data['length'] / (maxspeed * 1000 / 3600)
 
 
-# # Visualize the graph (optional)
-# ox.plot_graph(G)
+# Visualize the graph (optional)
+ox.plot_graph(G)
 
 # Create the map centered on the origin
 map_folium = folium.Map(location=origin, zoom_start=12)
@@ -124,10 +124,10 @@ map_folium.save('map.html')
 # -------------------------------
 
 # Define the starting point (point of collection)
-delivery_points = []
-for point, name in zip(points, names):
-    folium.Marker(location=point, tooltip=name).add_to(map_folium)
-    delivery_points.append((point[0], point[1], f"Package {name}"))
+delivery_points = [
+    (point, name, f"PKG{i:04d}") # Generate package IDs like PKG0001
+    for i, (point, name) in enumerate(zip(points, names), 1)
+]
 
 # Create a distance matrix
 num_points = len(delivery_points)
@@ -260,12 +260,12 @@ for i in range(len(tsp_path) - 1):
         average_speed = (total_distance / 1000) / (total_duration / 3600)  # km/h
         print(f"Average speed: {average_speed:.2f} km/h")
         
-        # Print speeds for each segment
-        print("Segment speeds:")
-        for u, v in zip(shortest_path[:-1], shortest_path[1:]):
-            edge_data = G.get_edge_data(u, v)[0]
-            segment_speed = edge_data['length'] / edge_data['travel_time'] * 3.6  # Convert to km/h
-            print(f"  Segment speed: {segment_speed:.2f} km/h")
+        # # Print speeds for each segment
+        # print("Segment speeds:")
+        # for u, v in zip(shortest_path[:-1], shortest_path[1:]):
+        #     edge_data = G.get_edge_data(u, v)[0]
+        #     segment_speed = edge_data['length'] / edge_data['travel_time'] * 3.6  # Convert to km/h
+        #     print(f"  Segment speed: {segment_speed:.2f} km/h")
     except nx.NetworkXNoPath:
         print(f"No path between {delivery_points[start_idx][2]} and {delivery_points[end_idx][2]}")
         
@@ -273,11 +273,21 @@ for i in range(len(tsp_path) - 1):
 # -------------------------------
 # 6. Sauvegarder la carte finale avec les routes et les points de livraison
 # -------------------------------
-map_folium.save('rouen_deliveries_map.html')
 
-# Print total delivery distance and duration
-print(f"Total delivery distance: {total_delivery_distance} meters")
-print(f"Total delivery duration: {total_delivery_duration} seconds")
+# Create the map with package information
+map_folium = folium.Map(location=origin, zoom_start=12)
 
-# Affichage final
-print("Carte de Rouen avec points de livraison et réseau routier générée : 'rouen_deliveries_map.html'")
+# Add points to the map with package IDs in tooltips
+for point, name, pkg_id in delivery_points:
+    tooltip_text = f"{name} (Tracking ID: {pkg_id})"
+    folium.Marker(location=point, tooltip=tooltip_text).add_to(map_folium)
+
+# When displaying the optimal path in terminal:
+def print_route_with_packages(route):
+    print("\nDelivery Route with Package IDs:")
+    print("--------------------------------")
+    for i, node in enumerate(route, 1):
+        point_index = points.index((node[1], node[0]))  # Convert node coords to point index
+        pkg_id = delivery_points[point_index][2]
+        location_name = delivery_points[point_index][1]
+        print(f"Stop {i}: {location_name} - Package ID: {pkg_id}")
