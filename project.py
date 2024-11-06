@@ -8,6 +8,10 @@ from folium.plugins import PolyLineTextPath
 from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 import matplotlib.cm as cm
 import numpy as np
+import warnings
+
+# Suppress FutureWarnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
 # Example file path
@@ -281,8 +285,8 @@ for i in range(len(tsp_path) - 1):
         map_folium_final.add_child(arrows)
 
         # Calculate route length and duration
-        length = sum(ox.utils_graph.routing.route_to_gdf(G, route, 'length'))
-        duration = sum(ox.utils_graph.routing.route_to_gdf(G, route, 'travel_time'))
+        length = sum(ox.utils_graph.get_route_edge_attributes(G, route, 'length'))
+        duration = sum(ox.utils_graph.get_route_edge_attributes(G, route, 'travel_time'))
 
         # Update totals
         total_delivery_distance += length
@@ -297,6 +301,10 @@ for i in range(len(tsp_path) - 1):
 # -------------------------------
 
 map_folium_final.save('rouen_deliveries_map.html')
+
+print("distance de livraison totale:", total_delivery_distance)
+print("temps de livraison totale:", total_delivery_duration)
+
 
 # When displaying the optimal path in terminal:
 def print_route_with_packages(route):
