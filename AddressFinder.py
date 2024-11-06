@@ -1,11 +1,11 @@
 import openpyxl
 from geopy.geocoders import Nominatim
-from geopy.distance import geodesic
+from geopy.distance import distance
 from time import sleep
 import random
 import math
 
-def FindAddresses(centerPoint:tuple, radius:float, numAddresses:int):
+def FindAddresses(centerPoint: tuple, radius: float, numAddresses: int):
     """
     Find addresses within a given radius of a center point.
 
@@ -16,48 +16,50 @@ def FindAddresses(centerPoint:tuple, radius:float, numAddresses:int):
     print("Finding addresses...")
     geolocator = Nominatim(user_agent="address_finder")
     addresses = []
-    i = -1
-    lat, lon = centerPoint
+    attempts = 0
+    max_attempts = numAddresses * 10  # To prevent infinite loops
 
-    while len(addresses) < numAddresses:
-        i += 1
+    while len(addresses) < numAddresses and attempts < max_attempts:
+        attempts += 1
         try:
-            location = geolocator.reverse((lat, lon), exactly_one=True, timeout=10)
-            if location:
-                address_parts = location.address.split(',')
-                if len(address_parts) > 1:
-                    street_address = address_parts[0] + ', ' + address_parts[1]
-                else:
-                    street_address = address_parts[0]
+            # Generate a random distance and bearing
+            bearing = random.uniform(0, 360)
+            # Ensure uniform distribution within the circle
+            rand_distance = radius * math.sqrt(random.uniform(0, 1))
+            destination = distance(kilometers=rand_distance).destination(centerPoint, bearing)
+            new_lat, new_lon = destination.latitude, destination.longitude
 
+            # Reverse geocode to find the nearest address
+            location = geolocator.reverse((new_lat, new_lon), exactly_one=True, timeout=10)
+            if location and location.address:
+                address_parts = location.address.split(',')
+                street_address = ', '.join(address_parts[:2]) if len(address_parts) > 1 else address_parts[0]
+
+                # Get the accurate GPS coordinates of the address
+                address_lat = location.latitude
+                address_lon = location.longitude
+
+                # Check for duplicate addresses
                 if street_address not in [a[1] for a in addresses]:
-                    google_maps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
-                    addresses.append((i + 1, street_address, lat, lon, google_maps_url))
+                    google_maps_url = f"https://www.google.com/maps/search/?api=1&query={address_lat},{address_lon}"
+                    addresses.append((len(addresses) + 1, street_address, address_lat, address_lon, google_maps_url))
                     print(f"Found {len(addresses)}/{numAddresses} addresses...", end="\r")
         except Exception as e:
-            print(f"Error retrieving address for point ({lat}, {lon}): {e}")
+            print(f"\nError retrieving address for generated point ({new_lat}, {new_lon}): {e}")
             sleep(1)  # Wait for a second before retrying
 
-        # Adjust the lat/lon slightly to get a new point within the radius
-        angle = random.uniform(0, 360)
-        distance = random.uniform(0, radius)
-        delta_lat = distance * 0.009 / 1.609 * math.cos(math.radians(angle))
-        delta_lon = distance * 0.009 / 1.609 * math.sin(math.radians(angle))
-        new_lat = lat + delta_lat
-        new_lon = lon + delta_lon
-
-        if geodesic(centerPoint, (new_lat, new_lon)).km <= radius:
-            lat, lon = new_lat, new_lon
+    if len(addresses) < numAddresses:
+        print(f"\nOnly found {len(addresses)} addresses out of the requested {numAddresses}.")
 
     print()
     return addresses
 
-def WriteToExcel(addresses:list, filename:str):
+def WriteToExcel(addresses: list, filename: str):
     """
     Write the addresses to an Excel file.
 
     param addresses: A list of tuples containing address information.
-    param filename: The name of the Excel file to write to with .xlsx.
+    param filename: The name of the Excel file to write.
     """
     print("\nWriting addresses to Excel file...")
     try:
@@ -71,23 +73,22 @@ def WriteToExcel(addresses:list, filename:str):
         workbook.save(filename)
         print(f"Addresses saved to {filename}")
     except Exception as e:
-        input(f"An error occurred: {e}\nPress Enter to retry...")
+        print(f"An error occurred while writing to Excel: {e}")
+        input("Press Enter to retry...")
         WriteToExcel(addresses, filename)
 
-def main(centerPoint:tuple, radius:float, numAddresses:int, filename="addresses_found.xlsx"):
-    """
-    Main function to find addresses and write them to an Excel file.
-
-    param centerPoint: A tuple containing the latitude and longitude of the center point.
-    param radius: The radius in kilometers within which to find addresses.
-    param numAddresses: The number of addresses to find.
-    param filename: The name of the Excel file to write to with .xlsx.
-    """
+def main(centerPoint: tuple, radius: float, numAddresses: int, filename: str = "addresses_found.xlsx"):
     addresses = FindAddresses(centerPoint, radius, numAddresses)
-    WriteToExcel(addresses, filename)
+    if addresses:
+        WriteToExcel(addresses, filename)
+    else:
+        print("No addresses were found.")
 
 if __name__ == "__main__":
     centerPoint = (49.443512, 1.098445)  # Provided GPS coordinates
-    radius = float(input("Enter the radius in km: "))
-    numAddresses = int(input("Enter the number of addresses to find: "))
-    main(centerPoint, radius, numAddresses)
+    try:
+        radius = float(input("Enter the radius in km: "))
+        numAddresses = int(input("Enter the number of addresses to find: "))
+        main(centerPoint, radius, numAddresses)
+    except ValueError:
+        print("Please enter valid numerical values for radius and number of addresses.")
