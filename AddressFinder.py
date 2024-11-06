@@ -16,9 +16,11 @@ def FindAddresses(centerPoint:tuple, radius:float, numAddresses:int):
     print("Finding addresses...")
     geolocator = Nominatim(user_agent="address_finder")
     addresses = []
+    i = -1
     lat, lon = centerPoint
 
-    for i in range(numAddresses):
+    while len(addresses) < numAddresses:
+        i += 1
         try:
             location = geolocator.reverse((lat, lon), exactly_one=True, timeout=10)
             if location:
@@ -27,9 +29,11 @@ def FindAddresses(centerPoint:tuple, radius:float, numAddresses:int):
                     street_address = address_parts[0] + ', ' + address_parts[1]
                 else:
                     street_address = address_parts[0]
-                google_maps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
-                addresses.append((i + 1, street_address, lat, lon, google_maps_url))
-                print(f"Found {len(addresses)}/{numAddresses} addresses...", end="\r")
+
+                if street_address not in [a[1] for a in addresses]:
+                    google_maps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+                    addresses.append((i + 1, street_address, lat, lon, google_maps_url))
+                    print(f"Found {len(addresses)}/{numAddresses} addresses...", end="\r")
         except Exception as e:
             print(f"Error retrieving address for point ({lat}, {lon}): {e}")
             sleep(1)  # Wait for a second before retrying
@@ -65,7 +69,7 @@ def WriteToExcel(addresses:list, filename:str):
             sheet.append(address)
 
         workbook.save(filename)
-        print("Addresses saved to Excel file.")
+        print(f"Addresses saved to {filename}")
     except Exception as e:
         input(f"An error occurred: {e}\nPress Enter to retry...")
         WriteToExcel(addresses, filename)
