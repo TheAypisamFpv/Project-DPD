@@ -9,32 +9,31 @@ from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 import matplotlib.cm as cm
 import numpy as np
 
-# -------------------------------
-# 1. Téléchargement du graphe routier de Rouen
-# -------------------------------
-
-# Load points from the Excel file
-def load_points_from_excel(file_path):
-    df = pd.read_excel(file_path)
-    points = df[['lat', 'long']].values.tolist()
-    names = df['Package ID'].tolist()  # Add this line
-    return points, names  # Change this line
 
 # Example file path
 file_path = 'addresses_found.xlsx'
 
+def load_points_from_excel(file_path):
+    df = pd.read_excel(file_path)
+    df['lat'] = df['lat'].astype(float)    # Add this line
+    df['long'] = df['long'].astype(float)  # Add this line
+    points = df[['lat', 'long']].values.tolist()
+    names = df['Package ID'].tolist()
+    return points, names
+
 # Load points
 points, names = load_points_from_excel(file_path)
 
-# Ensure points is a list of tuples (latitude, longitude)
-if not points or not all(isinstance(point, (list, tuple)) and len(point) == 2 for point in points):
-    raise ValueError("The points list is not correctly formatted.")
+def get_nearest_node(G, point):
+    lat, lon = point
+    lat = float(lat)  # Ensure lat is a float
+    lon = float(lon)  # Ensure lon is a float
+    return ox.distance.nearest_nodes(G, X=lon, Y=lat)
 
 # Use the first point as the origin for the TSP
 origin = points[0]
-origin_city = 49.443512, 1.098445
+origin_city = (49.443512, 1.098445)
 
-# Function to find cities within a 10-kilometer radius using Overpass API
 def find_nearby_cities(center_coords, radius_km=10):
     overpass_url = "http://overpass-api.de/api/interpreter"
     overpass_query = f"""
@@ -58,14 +57,35 @@ def find_nearby_cities(center_coords, radius_km=10):
     
     return nearby_cities
 
-# Find nearby cities based on the origin
-places = find_nearby_cities(origin_city)
+# Ensure points is a list of tuples (latitude, longitude)
+if not points or not all(isinstance(point, (list, tuple)) and len(point) == 2 for point in points):
+    raise ValueError("The points list is not correctly formatted.")
 
-# Ensure places is a list of strings
-if isinstance(places, list) and all(isinstance(place, str) for place in places):
-    G = ox.graph_from_place(places, network_type='drive')
-else:
-    raise ValueError("The places list is not correctly formatted.")
+# Create graph
+G = ox.graph_from_point(
+    center_point=origin_city,
+    dist=5000,
+    dist_type='bbox',
+    network_type='drive'
+)
+
+# Get nearest nodes for all points
+nodes = []
+for point in points:
+    node = get_nearest_node(G, point)
+    nodes.append(node)
+
+try:
+    # First try to get graph from nearby cities
+    places = find_nearby_cities(origin_city)
+    if places:
+        G = ox.graph_from_place(places, network_type='drive')
+    else:
+        # Fallback to getting graph from point if no cities found
+        G = ox.graph_from_point(origin_city, dist=5000, network_type='drive')
+except Exception as e:
+    print(f"Failed to get graph from places, falling back to point: {e}")
+    G = ox.graph_from_point(origin_city, dist=5000, network_type='drive')
 
 
 # Add travel time to each edge in the graph
@@ -107,14 +127,21 @@ for u, v, k, data in G.edges(data=True, keys=True):
 
 
 # Visualize the graph (optional)
-ox.plot_graph(G)
+# ox.plot_graph(G)
 
 # Create the map centered on the origin
 map_folium = folium.Map(location=origin, zoom_start=12)
 
-# Add points to the map with names visible on hover
-for point, name in zip(points, names):
-    folium.Marker(location=point, tooltip=name).add_to(map_folium)
+# Define the starting point (point of collection)
+delivery_points = [
+    (point, name, f"PKG{i:04d}") # Generate package IDs like PKG0001
+    for i, (point, name) in enumerate(zip(points, names), 1)
+]
+
+# Add points to the map with package IDs in tooltips
+for point, name, pkg_id in delivery_points:
+    tooltip_text = f"{name} (Tracking ID: {pkg_id})"
+    folium.Marker(location=point, tooltip=tooltip_text).add_to(map_folium)
 
 # Save the map to an HTML file
 map_folium.save('map.html')
@@ -123,27 +150,27 @@ map_folium.save('map.html')
 # 5. Calculer et afficher le chemin le plus rapide pour la livraison
 # -------------------------------
 
-# Define the starting point (point of collection)
-delivery_points = [
-    (point, name, f"PKG{i:04d}") # Generate package IDs like PKG0001
-    for i, (point, name) in enumerate(zip(points, names), 1)
-]
-
 # Create a distance matrix
 num_points = len(delivery_points)
 distance_matrix = [[0] * num_points for _ in range(num_points)]
 
-for i, (lat1, lon1, _) in enumerate(delivery_points):
-    for j, (lat2, lon2, _) in enumerate(delivery_points):
+
+for i, (point1, _, _) in enumerate(delivery_points):
+    lat1, lon1 = point1  # Unpack point1 into lat1 and lon1
+    for j, (point2, _, _) in enumerate(delivery_points):
         if i != j:
-            node1 = ox.distance.nearest_nodes(G, lon1, lat1)
-            node2 = ox.distance.nearest_nodes(G, lon2, lat2)
+            lat2, lon2 = point2  # Unpack point2 into lat2 and lon2
+            node1 = get_nearest_node(G, (lat1, lon1))
+            node2 = get_nearest_node(G, (lat2, lon2))
             try:
                 # Use travel time as the weight for the shortest path calculation
                 length = nx.shortest_path_length(G, node1, node2, weight='travel_time')
                 distance_matrix[i][j] = length
             except nx.NetworkXNoPath:
                 distance_matrix[i][j] = float('inf')
+        else:
+            distance_matrix[i][j] = 0  # Distance to self is zero
+
 
 # Solve the TSP using OR-Tools
 def create_data_model():
@@ -207,14 +234,30 @@ total_delivery_duration = 0
 for i in range(len(tsp_path) - 1):
     start_idx = tsp_path[i]
     end_idx = tsp_path[i + 1]
-    start_lat, start_lon, _ = delivery_points[start_idx]
-    end_lat, end_lon, _ = delivery_points[end_idx]
-    start_node = ox.distance.nearest_nodes(G, start_lon, start_lat)
+
+    # Get the start and end points from delivery_points
+    start_point = delivery_points[start_idx][0]
+    end_point = delivery_points[end_idx][0]
+
+    # Unpack the coordinates
+    start_lat, start_lon = start_point
+    end_lat, end_lon = end_point
+
+    # Ensure coordinates are floats
+    start_lat = float(start_lat)
+    start_lon = float(start_lon)
+    end_lat = float(end_lat)
+    end_lon = float(end_lon)
+
+    # Get the nearest nodes
+    start_node = get_nearest_node(G, (start_lat, start_lon))
     end_node = ox.distance.nearest_nodes(G, end_lon, end_lat)
     
     try:
         # Calculate the shortest path based on travel time
         shortest_path = nx.shortest_path(G, start_node, end_node, weight='travel_time')
+    except nx.NetworkXNoPath:
+        print(f"No path between node {start_node} and node {end_node}")
         
         # Convert the route to a GeoDataFrame
         route_gdf = ox.routing.route_to_gdf(G, shortest_path)
