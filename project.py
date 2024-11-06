@@ -132,6 +132,9 @@ for u, v, k, data in G.edges(data=True, keys=True):
 # Create the map centered on the origin
 map_folium = folium.Map(location=origin, zoom_start=12)
 
+# Create the map with package information
+map_folium_final = folium.Map(location=origin, zoom_start=12)
+
 # Define the starting point (point of collection)
 delivery_points = [
     (point, name, f"PKG{i:04d}") # Generate package IDs like PKG0001
@@ -142,6 +145,11 @@ delivery_points = [
 for point, name, pkg_id in delivery_points:
     tooltip_text = f"{name} (Tracking ID: {pkg_id})"
     folium.Marker(location=point, tooltip=tooltip_text).add_to(map_folium)
+
+# Add points to the map with package IDs in tooltips
+for point, name, pkg_id in delivery_points:
+    tooltip_text = f"{name} (Tracking ID: {pkg_id})"
+    folium.Marker(location=point, tooltip=tooltip_text).add_to(map_folium_final)
 
 # Save the map to an HTML file
 map_folium.save('map.html')
@@ -251,34 +259,17 @@ for i in range(len(tsp_path) - 1):
 
     # Get the nearest nodes
     start_node = get_nearest_node(G, (start_lat, start_lon))
-    end_node = ox.distance.nearest_nodes(G, end_lon, end_lat)
-    
+    end_node = get_nearest_node(G, (end_lat, end_lon))
+
+    # Find the shortest path between the nodes using travel_time as the weight
     try:
-        # Calculate the shortest path based on travel time
-        shortest_path = nx.shortest_path(G, start_node, end_node, weight='travel_time')
-    except nx.NetworkXNoPath:
-        print(f"No path between node {start_node} and node {end_node}")
-        
-        # Convert the route to a GeoDataFrame
-        route_gdf = ox.routing.route_to_gdf(G, shortest_path)
-        
-        # Calculate total distance
-        total_distance = route_gdf['length'].sum()
-        
-        # Calculate total duration by summing travel times from the graph
-        total_duration = sum(G[u][v][0]['travel_time'] for u, v in zip(shortest_path[:-1], shortest_path[1:]))
-        
-        # Add the values to running totals
-        total_delivery_distance += total_distance
-        total_delivery_duration += total_duration
-        
-        # Get the coordinates of the path
-        path_coords = [(G.nodes[node]['y'], G.nodes[node]['x']) for node in shortest_path]
-        
-        # Add the path to the Folium map with arrows
-        polyline = folium.PolyLine(path_coords, color='grey', weight=5, opacity=0.7)
-        polyline.add_to(map_folium)
-        
+        route = nx.shortest_path(G, start_node, end_node, weight='travel_time')
+        # Get the route coordinates
+        route_coords = [(G.nodes[node]['y'], G.nodes[node]['x']) for node in route]
+
+        # Add the route to the map
+        polyline = folium.PolyLine(route_coords, color=colors[i], weight=5, opacity=0.7).add_to(map_folium_final)
+
         # Add arrows to the path
         arrows = PolyLineTextPath(
             polyline,
@@ -287,43 +278,25 @@ for i in range(len(tsp_path) - 1):
             offset=10,
             attributes={'fill': colors[i], 'font-weight': 'bold', 'font-size': '24'}  # Use the same color as the path
         )
-        map_folium.add_child(arrows)
-        
-        # Print the total distance and duration
-        print(f"Path from {delivery_points[start_idx][2]} to {delivery_points[end_idx][2]}:")
-        print(f"Total distance: {total_distance} meters")
-        print(f"Total duration: {total_duration} seconds")
+        map_folium_final.add_child(arrows)
 
-        # Print the total distance and duration
-        print(f"Path from {delivery_points[start_idx][2]} to {delivery_points[end_idx][2]}:")
-        print(f"Total distance: {total_distance/1000:.2f} km")
-        print(f"Total duration: {total_duration/60:.2f} minutes")
-        
-        # Calculate and print average speed
-        average_speed = (total_distance / 1000) / (total_duration / 3600)  # km/h
-        print(f"Average speed: {average_speed:.2f} km/h")
-        
-        # # Print speeds for each segment
-        # print("Segment speeds:")
-        # for u, v in zip(shortest_path[:-1], shortest_path[1:]):
-        #     edge_data = G.get_edge_data(u, v)[0]
-        #     segment_speed = edge_data['length'] / edge_data['travel_time'] * 3.6  # Convert to km/h
-        #     print(f"  Segment speed: {segment_speed:.2f} km/h")
+        # Calculate route length and duration
+        length = sum(ox.utils_graph.routing.route_to_gdf(G, route, 'length'))
+        duration = sum(ox.utils_graph.routing.route_to_gdf(G, route, 'travel_time'))
+
+        # Update totals
+        total_delivery_distance += length
+        total_delivery_duration += duration
+
     except nx.NetworkXNoPath:
-        print(f"No path between {delivery_points[start_idx][2]} and {delivery_points[end_idx][2]}")
+        print(f"No path between node {start_node} and node {end_node}")
         
 
 # -------------------------------
 # 6. Sauvegarder la carte finale avec les routes et les points de livraison
 # -------------------------------
 
-# Create the map with package information
-map_folium = folium.Map(location=origin, zoom_start=12)
-
-# Add points to the map with package IDs in tooltips
-for point, name, pkg_id in delivery_points:
-    tooltip_text = f"{name} (Tracking ID: {pkg_id})"
-    folium.Marker(location=point, tooltip=tooltip_text).add_to(map_folium)
+map_folium_final.save('rouen_deliveries_map.html')
 
 # When displaying the optimal path in terminal:
 def print_route_with_packages(route):
