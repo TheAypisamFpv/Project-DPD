@@ -77,17 +77,9 @@ def WriteToExcel(addresses: list, filename: str):
         input("Press Enter to retry...")
         WriteToExcel(addresses, filename)
 
-def main(centerPoint: tuple, radius: float, NumAddresses: int, filename: str = "addresses_found.xlsx"):
-    StartAddress = [
-        0,
-        "1 Rue du Clos Tellier",
-        49.377805,
-        1.115311,
-        "https://www.google.com/maps/place/1+Rue+du+Clos+Tellier"
-    ]
-    addresses = FindAddresses(centerPoint, radius, NumAddresses)
+def main(centerPoint: tuple, radius: float, numAddresses: int, filename: str = "addresses_found.xlsx"):
+    addresses = FindAddresses(centerPoint, radius, numAddresses)
     if addresses:
-        addresses.insert(0, StartAddress)
         WriteToExcel(addresses, filename)
     else:
         print("No addresses were found.")
