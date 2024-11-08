@@ -11,14 +11,10 @@ import numpy as np
 import warnings
 from tsp_solver.greedy import solve_tsp
 
-# Suppress FutureWarnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
 
-
-# Example file path
-file_path = 'addresses_found.xlsx'
 
 def load_points_from_excel(file_path):
+    print("Loading points from Excel file...")
     df = pd.read_excel(file_path)
     df['lat'] = df['lat'].astype(float)    # Add this line
     df['long'] = df['long'].astype(float)  # Add this line
@@ -26,8 +22,6 @@ def load_points_from_excel(file_path):
     names = df['Package ID'].tolist()
     return points, names
 
-# Load points
-points, names = load_points_from_excel(file_path)
 
 def get_nearest_node(G, point):
     lat, lon = point
@@ -35,9 +29,6 @@ def get_nearest_node(G, point):
     lon = float(lon)  # Ensure lon is a float
     return ox.distance.nearest_nodes(G, X=lon, Y=lat)
 
-# Use the first point as the origin for the TSP
-origin = points[0]
-origin_city = (49.443512, 1.098445)
 
 def find_nearby_cities(center_coords, radius_km=10):
     overpass_url = "http://overpass-api.de/api/interpreter"
@@ -62,6 +53,63 @@ def find_nearby_cities(center_coords, radius_km=10):
     
     return nearby_cities
 
+# Solve the TSP using OR-Tools
+def create_data_model():
+    data = {}
+    data['distance_matrix'] = distance_matrix
+    data['num_vehicles'] = 3
+    data['depot'] = 0
+    data['demands'] = [0, 1, 1, 2, 4, 2, 3, 1, 2, 1]  # Example demands for each location
+    data['vehicle_capacities'] = [7, 7, 7]  # Capacities for each vehicle
+    return data
+
+def distance_callback(from_index, to_index):
+    from_node = manager.IndexToNode(from_index)
+    to_node = manager.IndexToNode(to_index)
+    return data['distance_matrix'][from_node][to_node]
+
+
+# Add capacity constraint
+def demand_callback(from_index):
+    from_node = manager.IndexToNode(from_index)
+    return data['demands'][from_node]
+
+def get_tsp_paths(manager, routing, solution):
+    tsp_paths = []
+    for vehicle_id in range(data['num_vehicles']):
+        index = routing.Start(vehicle_id)
+        route = []
+        while not routing.IsEnd(index):
+            route.append(manager.IndexToNode(index))
+            index = solution.Value(routing.NextVar(index))
+        route.append(manager.IndexToNode(index))
+        tsp_paths.append(route)
+    return tsp_paths
+
+# When displaying the optimal path in terminal:
+def print_route_with_packages(route):
+    print("\n\nDelivery Route with Package IDs:")
+    print("--------------------------------")
+    for i, node in enumerate(route, 1):
+        point_index = points.index((node[1], node[0]))  # Convert node coords to point index
+        pkg_id = delivery_points[point_index][2]
+        location_name = delivery_points[point_index][1]
+        print(f"Stop {i}: {location_name} - Package ID: {pkg_id}")
+
+
+# Suppress FutureWarnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
+# Example file path
+file_path = 'addresses_found.xlsx'
+
+# Load points
+points, names = load_points_from_excel(file_path)
+
+# Use the first point as the origin for the TSP
+origin = points[0]
+origin_city = (49.443512, 1.098445)
+
 # Ensure points is a list of tuples (latitude, longitude)
 if not points or not all(isinstance(point, (list, tuple)) and len(point) == 2 for point in points):
     raise ValueError("The points list is not correctly formatted.")
@@ -75,11 +123,14 @@ G = ox.graph_from_point(
 )
 
 # Get nearest nodes for all points
+print("Getting nearest nodes for all points...")
 nodes = []
 for point in points:
     node = get_nearest_node(G, point)
     nodes.append(node)
 
+
+print("Creating distance matrix...")
 try:
     # First try to get graph from nearby cities
     places = find_nearby_cities(origin_city)
@@ -94,7 +145,9 @@ except Exception as e:
 
 
 # Add travel time to each edge in the graph
+print("Adding travel time to each edge in the graph...")
 for u, v, k, data in G.edges(data=True, keys=True):
+    print(f"\t Processing edge {u} -> {v}...", end='\r')
     if 'length' in data:
         # Get speed from OSM data or use defaults based on road type
         if 'maxspeed' in data:
@@ -171,8 +224,9 @@ delivery_points.insert(0, [depot_address])
 num_points = len(delivery_points)
 distance_matrix = [[0] * num_points for _ in range(num_points)]
 
-
+print("\n\nCalculating distance matrix...")
 for i in range(num_points):
+    print(f"\t|{'⬜'*int(i+1/num_points)}{'⬛'*int((num_points-i+1)/num_points)}| {i+1}/{num_points}", end='\r')
     for j in range(num_points):
         if i != j:
             start_point = delivery_points[i][0]
@@ -187,35 +241,16 @@ for i in range(num_points):
             except nx.NetworkXNoPath:
                 distance_matrix[i][j] = float('inf')
 
-
-# Solve the TSP using OR-Tools
-def create_data_model():
-    data = {}
-    data['distance_matrix'] = distance_matrix
-    data['num_vehicles'] = 3
-    data['depot'] = 0
-    data['demands'] = [0, 1, 1, 2, 4, 2, 3, 1, 2, 1]  # Example demands for each location
-    data['vehicle_capacities'] = [7, 7, 7]  # Capacities for each vehicle
-    return data
-
+print("\n\nSolving the TSP problem...")
 data = create_data_model()
 manager = pywrapcp.RoutingIndexManager(len(data['distance_matrix']), data['num_vehicles'], data['depot'])
 routing = pywrapcp.RoutingModel(manager)
-
-def distance_callback(from_index, to_index):
-    from_node = manager.IndexToNode(from_index)
-    to_node = manager.IndexToNode(to_index)
-    return data['distance_matrix'][from_node][to_node]
 
 transit_callback_index = routing.RegisterTransitCallback(distance_callback)
 
 # Define cost of each arc
 routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
 
-# Add capacity constraint
-def demand_callback(from_index):
-    from_node = manager.IndexToNode(from_index)
-    return data['demands'][from_node]
 
 demand_callback_index = routing.RegisterUnaryTransitCallback(demand_callback)
 routing.AddDimensionWithVehicleCapacity(
@@ -233,19 +268,6 @@ search_parameters.first_solution_strategy = (routing_enums_pb2.FirstSolutionStra
 solution = routing.SolveWithParameters(search_parameters)
 
 
-
-def get_tsp_paths(manager, routing, solution):
-    tsp_paths = []
-    for vehicle_id in range(data['num_vehicles']):
-        index = routing.Start(vehicle_id)
-        route = []
-        while not routing.IsEnd(index):
-            route.append(manager.IndexToNode(index))
-            index = solution.Value(routing.NextVar(index))
-        route.append(manager.IndexToNode(index))
-        tsp_paths.append(route)
-    return tsp_paths
-
 if solution:
     tsp_paths = get_tsp_paths(manager, routing, solution)
 
@@ -257,7 +279,10 @@ total_delivery_distance = 0
 total_delivery_duration = 0
 
 # Iterate over the TSP path and calculate the shortest path
+print("\n\nCalculating shortest paths for each vehicle...")
 for i in range(num_points):
+    #% at the end
+    print(f"\t|{'⬜'*i}{'⬛'*(num_points-i)}| {i / num_points*100:.2%}%", end='\r')
     for j in range(num_points):
         if i != j:
             start_point = delivery_points[i][0]
@@ -282,7 +307,9 @@ if tsp_path[-1] != 0:
     tsp_path.append(0)
 
 # Iterate over the TSP paths and calculate the shortest path
+print("\n\nCalculating shortest paths for each vehicle...")
 for vehicle_id, tsp_path in enumerate(tsp_paths):
+    print(f"\t|{'⬜'*vehicle_id}{'⬛'*(data['num_vehicles']-vehicle_id)}|", end='\r')
     vehicle_color = vehicle_colors[vehicle_id % len(vehicle_colors)]  # Assign a color to each vehicle
     for i in range(len(tsp_path) - 1):
         start_idx = tsp_path[i]
@@ -354,14 +381,3 @@ map_folium_final.save('rouen_deliveries_map.html')
 
 print("distance de livraison totale:", total_delivery_distance)
 print("temps de livraison totale:", total_delivery_duration)
-
-
-# When displaying the optimal path in terminal:
-def print_route_with_packages(route):
-    print("\nDelivery Route with Package IDs:")
-    print("--------------------------------")
-    for i, node in enumerate(route, 1):
-        point_index = points.index((node[1], node[0]))  # Convert node coords to point index
-        pkg_id = delivery_points[point_index][2]
-        location_name = delivery_points[point_index][1]
-        print(f"Stop {i}: {location_name} - Package ID: {pkg_id}")
