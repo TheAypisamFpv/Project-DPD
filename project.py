@@ -9,6 +9,7 @@ from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 import matplotlib.cm as cm
 import numpy as np
 import warnings
+from tsp_solver.greedy import solve_tsp
 
 # Suppress FutureWarnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -167,28 +168,27 @@ num_points = len(delivery_points)
 distance_matrix = [[0] * num_points for _ in range(num_points)]
 
 
-for i, (point1, _, _) in enumerate(delivery_points):
-    lat1, lon1 = point1  # Unpack point1 into lat1 and lon1
-    for j, (point2, _, _) in enumerate(delivery_points):
+for i in range(num_points):
+    for j in range(num_points):
         if i != j:
-            lat2, lon2 = point2  # Unpack point2 into lat2 and lon2
-            node1 = get_nearest_node(G, (lat1, lon1))
-            node2 = get_nearest_node(G, (lat2, lon2))
+            start_point = delivery_points[i][0]
+            end_point = delivery_points[j][0]
+            start_lat, start_lon = float(start_point[0]), float(start_point[1])
+            end_lat, end_lon = float(end_point[0]), float(end_point[1])
+            start_node = get_nearest_node(G, (start_lat, start_lon))
+            end_node = get_nearest_node(G, (end_lat, end_lon))
             try:
-                # Use travel time as the weight for the shortest path calculation
-                length = nx.shortest_path_length(G, node1, node2, weight='travel_time')
-                distance_matrix[i][j] = length
+                route_length = nx.shortest_path_length(G, start_node, end_node, weight='travel_time')
+                distance_matrix[i][j] = route_length
             except nx.NetworkXNoPath:
                 distance_matrix[i][j] = float('inf')
-        else:
-            distance_matrix[i][j] = 0  # Distance to self is zero
 
 
 # Solve the TSP using OR-Tools
 def create_data_model():
     data = {}
     data['distance_matrix'] = distance_matrix
-    data['num_vehicles'] = 1
+    data['num_vehicles'] = 3
     data['depot'] = 0
     return data
 
@@ -241,6 +241,25 @@ for i in range(len(tsp_path)-1):
 # Initialize total distance and duration
 total_delivery_distance = 0
 total_delivery_duration = 0
+
+# Iterate over the TSP path and calculate the shortest path
+for i in range(num_points):
+    for j in range(num_points):
+        if i != j:
+            start_point = delivery_points[i][0]
+            end_point = delivery_points[j][0]
+            start_lat, start_lon = float(start_point[0]), float(start_point[1])
+            end_lat, end_lon = float(end_point[0]), float(end_point[1])
+            start_node = get_nearest_node(G, (start_lat, start_lon))
+            end_node = get_nearest_node(G, (end_lat, end_lon))
+            try:
+                route_length = nx.shortest_path_length(G, start_node, end_node, weight='travel_time')
+                distance_matrix[i][j] = route_length
+            except nx.NetworkXNoPath:
+                distance_matrix[i][j] = float('inf')
+
+# Solve the TSP problem
+tsp_path = solve_tsp(distance_matrix)
 
 # Iterate over the TSP path and calculate the shortest path
 for i in range(len(tsp_path) - 1):
