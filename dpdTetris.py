@@ -422,5 +422,5 @@ if __name__ == "__main__":
         ]),
     }
     
-    game = TetrisGame(GameSize=(10, 20), CustomPieces=CustomPieces, UseSprites=False)
+    game = TetrisGame(GameSize=(10, 20), CustomPieces=CustomPieces, UseSprites=True)
     print(game.GameLoop())
