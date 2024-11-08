@@ -163,6 +163,10 @@ map_folium.save('map.html')
 # 5. Calculer et afficher le chemin le plus rapide pour la livraison
 # -------------------------------
 
+# Add the depot address to the delivery points
+depot_address = (49.377805, 1.115311)  # Replace with actual depot coordinates
+delivery_points.insert(0, [depot_address])
+
 # Create a distance matrix
 num_points = len(delivery_points)
 distance_matrix = [[0] * num_points for _ in range(num_points)]
@@ -190,16 +194,9 @@ def create_data_model():
     data['distance_matrix'] = distance_matrix
     data['num_vehicles'] = 3
     data['depot'] = 0
+    data['demands'] = [0, 1, 1, 2, 4, 2, 3, 1, 2, 1]  # Example demands for each location
+    data['vehicle_capacities'] = [7, 7, 7]  # Capacities for each vehicle
     return data
-
-def get_tsp_path(manager, routing, solution):
-    index = routing.Start(0)
-    tsp_path = []
-    while not routing.IsEnd(index):
-        tsp_path.append(manager.IndexToNode(index))
-        index = solution.Value(routing.NextVar(index))
-    tsp_path.append(manager.IndexToNode(index))  # Return to the starting point
-    return tsp_path
 
 data = create_data_model()
 manager = pywrapcp.RoutingIndexManager(len(data['distance_matrix']), data['num_vehicles'], data['depot'])
@@ -215,6 +212,19 @@ transit_callback_index = routing.RegisterTransitCallback(distance_callback)
 # Define cost of each arc
 routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
 
+# Add capacity constraint
+def demand_callback(from_index):
+    from_node = manager.IndexToNode(from_index)
+    return data['demands'][from_node]
+
+demand_callback_index = routing.RegisterUnaryTransitCallback(demand_callback)
+routing.AddDimensionWithVehicleCapacity(
+    demand_callback_index,
+    0,  # null capacity slack
+    data['vehicle_capacities'],  # vehicle maximum capacities
+    True,  # start cumul to zero
+    'Capacity')
+
 # Setting first solution heuristic
 search_parameters = pywrapcp.DefaultRoutingSearchParameters()
 search_parameters.first_solution_strategy = (routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC)
@@ -222,21 +232,25 @@ search_parameters.first_solution_strategy = (routing_enums_pb2.FirstSolutionStra
 # Solve the problem
 solution = routing.SolveWithParameters(search_parameters)
 
-if solution:
-    tsp_path = get_tsp_path(manager, routing, solution)
-    print("Optimal TSP path:", tsp_path)
 
-# Create a color map for the paths
-colors = []
-for i in range(len(tsp_path)-1):
-    # Convert numpy color to hex string
-    rgb = cm.rainbow(i / (len(tsp_path)-1))[:3]  # Get RGB values
-    hex_color = '#{:02x}{:02x}{:02x}'.format(
-        int(rgb[0]*255),
-        int(rgb[1]*255),
-        int(rgb[2]*255)
-    )
-    colors.append(hex_color)
+
+def get_tsp_paths(manager, routing, solution):
+    tsp_paths = []
+    for vehicle_id in range(data['num_vehicles']):
+        index = routing.Start(vehicle_id)
+        route = []
+        while not routing.IsEnd(index):
+            route.append(manager.IndexToNode(index))
+            index = solution.Value(routing.NextVar(index))
+        route.append(manager.IndexToNode(index))
+        tsp_paths.append(route)
+    return tsp_paths
+
+if solution:
+    tsp_paths = get_tsp_paths(manager, routing, solution)
+
+# Define a list of colors for the vehicles
+vehicle_colors = ['#FF0000', '#00FF00', '#0000FF']  # Red, Green, Blue
 
 # Initialize total distance and duration
 total_delivery_distance = 0
@@ -261,59 +275,76 @@ for i in range(num_points):
 # Solve the TSP problem
 tsp_path = solve_tsp(distance_matrix)
 
-# Iterate over the TSP path and calculate the shortest path
-for i in range(len(tsp_path) - 1):
-    start_idx = tsp_path[i]
-    end_idx = tsp_path[i + 1]
+# Ensure the depot is the start and end point
+if tsp_path[0] != 0:
+    tsp_path.insert(0, 0)
+if tsp_path[-1] != 0:
+    tsp_path.append(0)
 
-    # Get the start and end points from delivery_points
-    start_point = delivery_points[start_idx][0]
-    end_point = delivery_points[end_idx][0]
+# Iterate over the TSP paths and calculate the shortest path
+for vehicle_id, tsp_path in enumerate(tsp_paths):
+    vehicle_color = vehicle_colors[vehicle_id % len(vehicle_colors)]  # Assign a color to each vehicle
+    for i in range(len(tsp_path) - 1):
+        start_idx = tsp_path[i]
+        end_idx = tsp_path[i + 1]
 
-    # Unpack the coordinates
-    start_lat, start_lon = start_point
-    end_lat, end_lon = end_point
+        # Get the start and end points from delivery_points
+        start_point = delivery_points[start_idx][0]
+        end_point = delivery_points[end_idx][0]
 
-    # Ensure coordinates are floats
-    start_lat = float(start_lat)
-    start_lon = float(start_lon)
-    end_lat = float(end_lat)
-    end_lon = float(end_lon)
+        # Unpack the coordinates
+        start_lat, start_lon = start_point
+        end_lat, end_lon = end_point
 
-    # Get the nearest nodes
-    start_node = get_nearest_node(G, (start_lat, start_lon))
-    end_node = get_nearest_node(G, (end_lat, end_lon))
+        # Ensure coordinates are floats
+        start_lat = float(start_lat)
+        start_lon = float(start_lon)
+        end_lat = float(end_lat)
+        end_lon = float(end_lon)
 
-    # Find the shortest path between the nodes using travel_time as the weight
-    try:
-        route = nx.shortest_path(G, start_node, end_node, weight='travel_time')
-        # Get the route coordinates
-        route_coords = [(G.nodes[node]['y'], G.nodes[node]['x']) for node in route]
+        # Get the nearest nodes
+        start_node = get_nearest_node(G, (start_lat, start_lon))
+        end_node = get_nearest_node(G, (end_lat, end_lon))
 
-        # Add the route to the map
-        polyline = folium.PolyLine(route_coords, color=colors[i], weight=5, opacity=0.7).add_to(map_folium_final)
+        # Find the shortest path between the nodes using travel_time as the weight
+        try:
+            route = nx.shortest_path(G, start_node, end_node, weight='travel_time')
+            # Get the route coordinates
+            route_coords = [(G.nodes[node]['y'], G.nodes[node]['x']) for node in route]
 
-        # Add arrows to the path
-        arrows = PolyLineTextPath(
-            polyline,
-            '→',  # Unicode arrow symbol
-            repeat=True,
-            offset=10,
-            attributes={'fill': colors[i], 'font-weight': 'bold', 'font-size': '24'}  # Use the same color as the path
-        )
-        map_folium_final.add_child(arrows)
+            # Add the route to the map
+            polyline = folium.PolyLine(route_coords, color=vehicle_color, weight=5, opacity=0.7).add_to(map_folium_final)
 
-        # Calculate route length and duration
-        length = sum(ox.utils_graph.get_route_edge_attributes(G, route, 'length'))
-        duration = sum(ox.utils_graph.get_route_edge_attributes(G, route, 'travel_time'))
+            # Add arrows to the path
+            arrows = PolyLineTextPath(
+                polyline,
+                '→',  # Unicode arrow symbol
+                repeat=True,
+                offset=10,
+                attributes={'fill': vehicle_color, 'font-weight': 'bold', 'font-size': '24'}  # Use the same color as the path
+            )
+            map_folium_final.add_child(arrows)
 
-        # Update totals
-        total_delivery_distance += length
-        total_delivery_duration += duration
+            # Add markers for the start and end points
+            folium.Marker(
+                location=[start_lat, start_lon],
+                icon=folium.Icon(color='white', icon_color=vehicle_color, icon='truck', prefix='fa')
+            ).add_to(map_folium_final)
+            folium.Marker(
+                location=[end_lat, end_lon],
+                icon=folium.Icon(color='white', icon_color=vehicle_color, icon='truck', prefix='fa')
+            ).add_to(map_folium_final)
 
-    except nx.NetworkXNoPath:
-        print(f"No path between node {start_node} and node {end_node}")
-        
+            # Calculate route length and duration
+            length = sum(ox.utils_graph.get_route_edge_attributes(G, route, 'length'))
+            duration = sum(ox.utils_graph.get_route_edge_attributes(G, route, 'travel_time'))
+
+            # Update totals
+            total_delivery_distance += length
+            total_delivery_duration += duration
+
+        except nx.NetworkXNoPath:
+            print(f"No path between node {start_node} and node {end_node}")
 
 # -------------------------------
 # 6. Sauvegarder la carte finale avec les routes et les points de livraison
