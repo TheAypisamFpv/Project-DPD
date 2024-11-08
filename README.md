@@ -81,13 +81,6 @@ python project.py
 
 ## Dependencies
 
-The main Python libraries used in this project are:
-- `folium`: For interactive map visualization.
-- `osmnx`: For street network analysis.
-- `networkx`: For graph-based route optimization.
-- `numpy`: For numerical operations and matrix manipulation.
-- `matplotlib`: For visualization (if needed in extensions).
-
 To install these dependencies, use:
 ```bash
 pip install -r requirements.txt
