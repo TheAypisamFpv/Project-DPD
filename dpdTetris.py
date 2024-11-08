@@ -10,7 +10,7 @@ class TetrisGame:
             GameSize (tuple): The size of the game matrix (width, height). (default=(10, 15))
             BlockSize (int): The size of each block in pixels. (default=30)
             CustomPieces (dict): A dictionary of custom pieces to use in the game. (default=standard pieces)
-            UseSprites (bool): Flag to determine if sprites in sprites folder should be used ({PieceType}.png). (default=False)
+            UseSprites (bool): Flag to determine if sprites in sprites folder should be used {PieceType}.png and background.png. (default=False)
         """
         self.GameMatrixSize = GameSize
         self.GameMatrix = [[0 for x in range(self.GameMatrixSize[0])] for y in range(self.GameMatrixSize[1])]
@@ -86,17 +86,38 @@ class TetrisGame:
 
         self.PIECE_OUTLINE = 0.3
         self.GAME_COLOR = (169, 169, 169)
+        self.GAME_BACKGROUND = None
         self.LimitLine = 2
 
         self.UseSprites = UseSprites
 
 
-    def LoadSprites(self) -> dict:
-        """Loads sprites for each piece type.
+    def LoadSprites(self) -> dict:  
+        """Loads sprites for each piece type and the game background.
 
         Returns:
             dict: A dictionary mapping piece types to their sprite images.
         """
+        try:
+            self.GAME_BACKGROUND = pygame.image.load("sprites/background.png").convert_alpha()
+            # Get original image size
+            OrigWidth, OrigHeight = self.GAME_BACKGROUND.get_size()
+            
+            # Calculate scaling factor to fit the window while maintaining aspect ratio
+            ScaleFactor = max(self.WINDOW_WIDTH / OrigWidth, self.WINDOW_HEIGHT / OrigHeight)
+            NewWidth = int(OrigWidth * ScaleFactor)
+            NewHeight = int(OrigHeight * ScaleFactor)
+            
+            # Resize the background image
+            self.GAME_BACKGROUND = pygame.transform.scale(self.GAME_BACKGROUND, (NewWidth, NewHeight))
+            
+            # Center the background on the screen
+            self.BackgroundX = (self.WINDOW_WIDTH - NewWidth) // 2
+            self.BackgroundY = (self.WINDOW_HEIGHT - NewHeight) // 2
+
+        except pygame.error as e:
+            self.GAME_BACKGROUND = None
+        
         Sprites = {}
         SpritesDir = "sprites"  # Ensure this directory exists with sprite images
         for PieceType in self.Pieces.keys():
@@ -294,7 +315,11 @@ class TetrisGame:
                             CurrentPiece.Rotate()
                             self.PlacePiece(CurrentPiece)
 
-            Screen.fill(self.GAME_COLOR)
+            if self.GAME_BACKGROUND:
+                Screen.blit(self.GAME_BACKGROUND, (self.BackgroundX, self.BackgroundY))
+            else:
+                Screen.fill(self.GAME_COLOR)
+            
             self.DrawGameMatrix(Screen, Pieces)
             pygame.display.flip()
             Clock.tick(60)  # Run the game loop at 60 frames per second
@@ -358,26 +383,26 @@ class Piece:
             screen.blit(self.Sprite, (self.x * self.Game.BLOCK_SIZE, self.y * self.Game.BLOCK_SIZE))
         else:
             # Draw each block of the piece
-            for i in range(self.shape.shape[0]):
-                for j in range(self.shape.shape[1]):
-                    if self.shape[i][j] == 1:
-                        block_x = (self.x + j) * self.game.BLOCK_SIZE
-                        block_y = (self.y + i) * self.game.BLOCK_SIZE
+            for i in range(self.Shape.shape[0]):
+                for j in range(self.Shape.shape[1]):
+                    if self.Shape[i][j] == 1:
+                        block_x = (self.x + j) * self.Game.BLOCK_SIZE
+                        block_y = (self.y + i) * self.Game.BLOCK_SIZE
                         pygame.draw.rect(screen,
-                                         self.color,
+                                         self.Color,
                                          pygame.Rect(
                                              block_x,
                                              block_y,
-                                             self.game.BLOCK_SIZE,
-                                             self.game.BLOCK_SIZE
+                                             self.Game.BLOCK_SIZE,
+                                             self.Game.BLOCK_SIZE
                                          ))
                         pygame.draw.rect(screen,
-                                         tuple(int(c * self.game.PIECE_OUTLINE) for c in self.color),
+                                         tuple(int(c * self.Game.PIECE_OUTLINE) for c in self.Color),
                                          pygame.Rect(
                                              block_x,
                                              block_y,
-                                             self.game.BLOCK_SIZE,
-                                             self.game.BLOCK_SIZE
+                                             self.Game.BLOCK_SIZE,
+                                             self.Game.BLOCK_SIZE
                                          ),
                                          2)
 
