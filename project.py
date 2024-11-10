@@ -10,6 +10,8 @@ import matplotlib.cm as cm
 import numpy as np
 import warnings
 from tsp_solver.greedy import solve_tsp
+from sklearn.cluster import KMeans
+import random
 
 # Suppress FutureWarnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -194,8 +196,9 @@ def create_data_model():
     data['distance_matrix'] = distance_matrix
     data['num_vehicles'] = 3
     data['depot'] = 0
-    data['demands'] = [0, 1, 1, 2, 4, 2, 3, 1, 2, 1]  # Example demands for each location
-    data['vehicle_capacities'] = [7, 7, 7]  # Capacities for each vehicle
+    data['demands'] = [1] * num_points  # Example demands for each location  
+    vehicle_capacity = int(np.ceil((num_points / data['num_vehicles']) + 1))  # Convert to integer
+    data['vehicle_capacities'] = [vehicle_capacity] * data['num_vehicles']
     return data
 
 data = create_data_model()
@@ -232,8 +235,6 @@ search_parameters.first_solution_strategy = (routing_enums_pb2.FirstSolutionStra
 # Solve the problem
 solution = routing.SolveWithParameters(search_parameters)
 
-
-
 def get_tsp_paths(manager, routing, solution):
     tsp_paths = []
     for vehicle_id in range(data['num_vehicles']):
@@ -252,45 +253,77 @@ if solution:
 # Define a list of colors for the vehicles
 vehicle_colors = ['#FF0000', '#00FF00', '#0000FF']  # Red, Green, Blue
 
+# Convert delivery points to numpy array for clustering
+delivery_coords = np.array([point[0] for point in delivery_points])
+
+# Number of vehicles
+num_vehicles = len(vehicle_colors)
+
+# Perform K-means clustering
+kmeans = KMeans(n_clusters=num_vehicles, random_state=0).fit(delivery_coords)
+clusters = kmeans.labels_
+
+# Create a list of delivery points for each vehicle
+vehicle_delivery_points = [[] for _ in range(num_vehicles)]
+for idx, cluster_id in enumerate(clusters):
+    vehicle_delivery_points[cluster_id].append(delivery_points[idx])
+
 # Initialize total distance and duration
 total_delivery_distance = 0
 total_delivery_duration = 0
 
-# Iterate over the TSP path and calculate the shortest path
-for i in range(num_points):
-    for j in range(num_points):
-        if i != j:
-            start_point = delivery_points[i][0]
-            end_point = delivery_points[j][0]
-            start_lat, start_lon = float(start_point[0]), float(start_point[1])
-            end_lat, end_lon = float(end_point[0]), float(end_point[1])
-            start_node = get_nearest_node(G, (start_lat, start_lon))
-            end_node = get_nearest_node(G, (end_lat, end_lon))
-            try:
-                route_length = nx.shortest_path_length(G, start_node, end_node, weight='travel_time')
-                distance_matrix[i][j] = route_length
-            except nx.NetworkXNoPath:
-                distance_matrix[i][j] = float('inf')
+# Define the depot point
+depot_address = (49.377805, 1.115311)
 
-# Solve the TSP problem
-tsp_path = solve_tsp(distance_matrix)
+# Solve TSP for each vehicle
+tsp_paths = []
+for vehicle_points in vehicle_delivery_points:
+    if not vehicle_points:
+        continue
 
-# Ensure the depot is the start and end point
-if tsp_path[0] != 0:
-    tsp_path.insert(0, 0)
-if tsp_path[-1] != 0:
-    tsp_path.append(0)
+    # Add the depot point to the vehicle's delivery points
+    vehicle_points.insert(0, (depot_address, 0))
+    vehicle_points.append((depot_address, 0))
+
+    # Create a distance matrix for the vehicle's delivery points
+    num_points = len(vehicle_points)
+    distance_matrix = np.zeros((num_points, num_points))
+    for i in range(num_points):
+        for j in range(num_points):
+            if i != j:
+                start_point = vehicle_points[i][0]
+                end_point = vehicle_points[j][0]
+                start_node = get_nearest_node(G, start_point)
+                end_node = get_nearest_node(G, end_point)
+                try:
+                    route_length = nx.shortest_path_length(G, start_node, end_node, weight='travel_time')
+                    distance_matrix[i][j] = route_length
+                except nx.NetworkXNoPath:
+                    distance_matrix[i][j] = float('inf')
+
+    # Solve the TSP problem for the vehicle
+    tsp_path = solve_tsp(distance_matrix)
+
+    # Ensure the depot is the start and end point
+    if tsp_path[0] != 0:
+        tsp_path.insert(0, 0)
+    if tsp_path[-1] != 0:
+        tsp_path.append(0)
+
+    tsp_paths.append(tsp_path)
 
 # Iterate over the TSP paths and calculate the shortest path
+vehicle_durations = []  # List to store the duration for each vehicle
 for vehicle_id, tsp_path in enumerate(tsp_paths):
     vehicle_color = vehicle_colors[vehicle_id % len(vehicle_colors)]  # Assign a color to each vehicle
+    vehicle_duration = 0  # Initialize the duration for this vehicle
     for i in range(len(tsp_path) - 1):
         start_idx = tsp_path[i]
         end_idx = tsp_path[i + 1]
 
         # Get the start and end points from delivery_points
-        start_point = delivery_points[start_idx][0]
-        end_point = delivery_points[end_idx][0]
+        start_point = vehicle_delivery_points[vehicle_id][start_idx][0]
+        end_point = vehicle_delivery_points[vehicle_id][end_idx][0]
 
         # Unpack the coordinates
         start_lat, start_lon = start_point
@@ -306,10 +339,18 @@ for vehicle_id, tsp_path in enumerate(tsp_paths):
         start_node = get_nearest_node(G, (start_lat, start_lon))
         end_node = get_nearest_node(G, (end_lat, end_lon))
 
+
         # Find the shortest path between the nodes using travel_time as the weight
         try:
-            route = nx.shortest_path(G, start_node, end_node, weight='travel_time')
+            route_length = nx.shortest_path_length(G, start_node, end_node, weight='travel_time')
+            vehicle_duration += route_length  # Add the travel time to the vehicle's duration
+
+            # Add a random stop time between 3 and 10 minutes (converted to the same unit as travel_time)
+            stop_time = random.randint(3, 10) * 60  # Assuming travel_time is in seconds
+            vehicle_duration += stop_time
+
             # Get the route coordinates
+            route = nx.shortest_path(G, start_node, end_node, weight='travel_time')
             route_coords = [(G.nodes[node]['y'], G.nodes[node]['x']) for node in route]
 
             # Add the route to the map
@@ -341,10 +382,12 @@ for vehicle_id, tsp_path in enumerate(tsp_paths):
 
             # Update totals
             total_delivery_distance += length
-            total_delivery_duration += duration
 
         except nx.NetworkXNoPath:
             print(f"No path between node {start_node} and node {end_node}")
+
+    total_delivery_duration += vehicle_duration  # Add the vehicle's duration to the total duration
+    vehicle_durations.append(vehicle_duration)  # Store the vehicle's duration
 
 # -------------------------------
 # 6. Sauvegarder la carte finale avec les routes et les points de livraison
@@ -353,7 +396,13 @@ for vehicle_id, tsp_path in enumerate(tsp_paths):
 map_folium_final.save('rouen_deliveries_map.html')
 
 print("distance de livraison totale:", total_delivery_distance)
-print("temps de livraison totale:", total_delivery_duration)
+
+# Print the total delivery duration
+print(f"Total delivery duration: {total_delivery_duration / 60:.2f} minutes")  # Convert seconds to minutes
+
+# Print the delivery duration for each vehicle
+for vehicle_id, duration in enumerate(vehicle_durations):
+    print(f"Vehicle {vehicle_id + 1} delivery duration: {duration / 60:.2f} minutes")  # Convert seconds to minutes
 
 
 # When displaying the optimal path in terminal:
