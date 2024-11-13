@@ -12,6 +12,7 @@ import warnings
 from tsp_solver.greedy import solve_tsp
 from sklearn.cluster import KMeans
 import random
+import datetime
 
 # Suppress FutureWarnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -194,7 +195,7 @@ for i in range(num_points):
 def create_data_model():
     data = {}
     data['distance_matrix'] = distance_matrix
-    data['num_vehicles'] = 3
+    data['num_vehicles'] = 4
     data['depot'] = 0
     data['demands'] = [1] * num_points  # Example demands for each location  
     vehicle_capacity = int(np.ceil((num_points / data['num_vehicles']) + 1))  # Convert to integer
@@ -251,7 +252,7 @@ if solution:
     tsp_paths = get_tsp_paths(manager, routing, solution)
 
 # Define a list of colors for the vehicles
-vehicle_colors = ['#FF0000', '#00FF00', '#0000FF']  # Red, Green, Blue
+vehicle_colors = ['#FF0000', '#00FF00', '#0000FF', '#ff8000']  # Red, Green, Blue, Orange
 
 # Convert delivery points to numpy array for clustering
 delivery_coords = np.array([point[0] for point in delivery_points])
@@ -312,82 +313,111 @@ for vehicle_points in vehicle_delivery_points:
 
     tsp_paths.append(tsp_path)
 
-# Iterate over the TSP paths and calculate the shortest path
-vehicle_durations = []  # List to store the duration for each vehicle
+# Lists to store per-vehicle distances and durations
+vehicle_durations = []
+vehicle_distances = []
+
+delivery_number = 1
+
+# Initialize start time at 8:00 AM
+current_time = datetime.datetime.combine(datetime.date.today(), datetime.time(8, 0))
+
+# Iterate over the TSP paths and calculate the shortest path for each vehicle
 for vehicle_id, tsp_path in enumerate(tsp_paths):
     vehicle_color = vehicle_colors[vehicle_id % len(vehicle_colors)]  # Assign a color to each vehicle
-    vehicle_duration = 0  # Initialize the duration for this vehicle
+    vehicle_duration = 0  # Initialize the duration for this vehicle in seconds
+    vehicle_distance = 0  # Initialize the distance for this vehicle in meters
+
+    # Initialize current_time for each vehicle at 8:00 AM
+    current_time = datetime.datetime.combine(datetime.date.today(), datetime.time(8, 0))
+
+    # Initialize delivery number for each vehicle
+    delivery_number = 1
+
+    # Iterate over the delivery points in tsp_path for this vehicle
     for i in range(len(tsp_path) - 1):
         start_idx = tsp_path[i]
         end_idx = tsp_path[i + 1]
 
-        # Get the start and end points from delivery_points
+        # Get the start and end points from vehicle_delivery_points
         start_point = vehicle_delivery_points[vehicle_id][start_idx][0]
         end_point = vehicle_delivery_points[vehicle_id][end_idx][0]
 
         # Unpack the coordinates
-        start_lat, start_lon = start_point
-        end_lat, end_lon = end_point
-
-        # Ensure coordinates are floats
-        start_lat = float(start_lat)
-        start_lon = float(start_lon)
-        end_lat = float(end_lat)
-        end_lon = float(end_lon)
+        start_lat, start_lon = float(start_point[0]), float(start_point[1])
+        end_lat, end_lon = float(end_point[0]), float(end_point[1])
 
         # Get the nearest nodes
         start_node = get_nearest_node(G, (start_lat, start_lon))
         end_node = get_nearest_node(G, (end_lat, end_lon))
 
-
         # Find the shortest path between the nodes using travel_time as the weight
         try:
-            route_length = nx.shortest_path_length(G, start_node, end_node, weight='travel_time')
-            vehicle_duration += route_length  # Add the travel time to the vehicle's duration
-
-            # Add a random stop time between 3 and 10 minutes (converted to the same unit as travel_time)
-            stop_time = random.randint(3, 10) * 60  # Assuming travel_time is in seconds
-            vehicle_duration += stop_time
-
             # Get the route coordinates
             route = nx.shortest_path(G, start_node, end_node, weight='travel_time')
             route_coords = [(G.nodes[node]['y'], G.nodes[node]['x']) for node in route]
 
+            # Calculate route length and duration
+            length = sum(ox.utils_graph.get_route_edge_attributes(G, route, 'length'))  # in meters
+            duration = sum(ox.utils_graph.get_route_edge_attributes(G, route, 'travel_time'))  # in seconds
+
+            # **Update vehicle's total distance and duration**
+            vehicle_distance += length
+            vehicle_duration += duration
+
+            # Calculate arrival time
+            arrival_time = current_time + datetime.timedelta(seconds=duration)
+
+            # Set the delivery duration as a random value between 2 and 6 minutes
+            delivery_duration = random.randint(2, 6)  # Time in minutes
+
+            # Print the formatted output
+            print(f"Vehicle {vehicle_id + 1}, delivery {delivery_number} depart {current_time.strftime('%H:%M')} arrival {arrival_time.strftime('%H:%M')}, time to deliver {delivery_duration} minutes")
+
+            # **Update vehicle's duration with delivery time**
+            vehicle_duration += delivery_duration * 60  # Convert minutes to seconds
+
+            # Update current_time after delivery duration
+            current_time = arrival_time + datetime.timedelta(minutes=delivery_duration)
+
+            # Increment the delivery number for the next iteration
+            delivery_number += 1
+
             # Add the route to the map
-            polyline = folium.PolyLine(route_coords, color=vehicle_color, weight=5, opacity=0.7).add_to(map_folium_final)
+            polyline = folium.PolyLine(route_coords, color=vehicle_color, weight=5, opacity=0.7)
+            map_folium_final.add_child(polyline)
 
             # Add arrows to the path
             arrows = PolyLineTextPath(
                 polyline,
-                '→',  # Unicode arrow symbol
+                '→',
                 repeat=True,
                 offset=10,
-                attributes={'fill': vehicle_color, 'font-weight': 'bold', 'font-size': '24'}  # Use the same color as the path
+                attributes={'fill': vehicle_color, 'font-weight': 'bold', 'font-size': '24'}
             )
             map_folium_final.add_child(arrows)
 
-            # Add markers for the start and end points
-            folium.Marker(
-                location=[start_lat, start_lon],
-                icon=folium.Icon(color='white', icon_color=vehicle_color, icon='truck', prefix='fa')
-            ).add_to(map_folium_final)
+            # Add marker for the end point with arrival time
             folium.Marker(
                 location=[end_lat, end_lon],
-                icon=folium.Icon(color='white', icon_color=vehicle_color, icon='truck', prefix='fa')
+                icon=folium.Icon(color='white', icon_color=vehicle_color, icon='flag', prefix='fa'),
+                popup=f"Arrival Time: {arrival_time.strftime('%H:%M')}"
             ).add_to(map_folium_final)
 
-            # Calculate route length and duration
-            length = sum(ox.utils_graph.get_route_edge_attributes(G, route, 'length'))
-            duration = sum(ox.utils_graph.get_route_edge_attributes(G, route, 'travel_time'))
-
-            # Update totals
-            total_delivery_distance += length
-
         except nx.NetworkXNoPath:
-            print(f"No path between node {start_node} and node {end_node}")
+            print(f"No path between ({start_lat}, {start_lon}) and ({end_lat}, {end_lon})")
 
-    total_delivery_duration += vehicle_duration  # Add the vehicle's duration to the total duration
-    vehicle_durations.append(vehicle_duration)  # Store the vehicle's duration
+    # **After all deliveries for this vehicle, add to totals**
+    total_delivery_distance += vehicle_distance
+    total_delivery_duration += vehicle_duration
+
+    # **Store per-vehicle distance and duration**
+    vehicle_distances.append(vehicle_distance)
+    vehicle_durations.append(vehicle_duration)
+
+    # **Print total distance and duration for this vehicle**
+    print(f"Vehicle {vehicle_id + 1} total distance: {vehicle_distance:.2f} meters")
+    print(f"Vehicle {vehicle_id + 1} total duration: {vehicle_duration / 60:.2f} minutes")  # Convert to minutes
 
 # -------------------------------
 # 6. Sauvegarder la carte finale avec les routes et les points de livraison
@@ -395,10 +425,9 @@ for vehicle_id, tsp_path in enumerate(tsp_paths):
 
 map_folium_final.save('rouen_deliveries_map.html')
 
-print("distance de livraison totale:", total_delivery_distance)
-
-# Print the total delivery duration
-print(f"Total delivery duration: {total_delivery_duration / 60:.2f} minutes")  # Convert seconds to minutes
+# **Print total delivery distance and duration for all vehicles**
+print(f"Total delivery distance for all vehicles: {total_delivery_distance:.2f} meters")
+print(f"Total delivery duration for all vehicles: {total_delivery_duration / 60:.2f} minutes")  # Convert to minutes
 
 # Print the delivery duration for each vehicle
 for vehicle_id, duration in enumerate(vehicle_durations):
