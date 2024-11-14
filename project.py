@@ -14,6 +14,8 @@ from sklearn.cluster import KMeans
 import random
 import datetime
 
+start_date = datetime.datetime.now()
+
 # Suppress FutureWarnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -254,11 +256,10 @@ if solution:
 # Define a list of colors for the vehicles
 vehicle_colors = ['#FF0000', '#00FF00', '#0000FF', '#ff8000']  # Red, Green, Blue, Orange
 
+num_vehicles = data['num_vehicles']
+
 # Convert delivery points to numpy array for clustering
 delivery_coords = np.array([point[0] for point in delivery_points])
-
-# Number of vehicles
-num_vehicles = len(vehicle_colors)
 
 # Perform K-means clustering
 kmeans = KMeans(n_clusters=num_vehicles, random_state=0).fit(delivery_coords)
@@ -443,3 +444,5 @@ def print_route_with_packages(route):
         pkg_id = delivery_points[point_index][2]
         location_name = delivery_points[point_index][1]
         print(f"Stop {i}: {location_name} - Package ID: {pkg_id}")
+
+print("temps de compilation :", datetime.datetime.now() - start_date)
