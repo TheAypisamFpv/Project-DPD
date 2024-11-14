@@ -235,8 +235,10 @@ routing.AddDimensionWithVehicleCapacity(
 search_parameters = pywrapcp.DefaultRoutingSearchParameters()
 search_parameters.first_solution_strategy = (routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC)
 
+print("Solving TSP with OR-Tools (this may take some time)...")
 # Solve the problem
 solution = routing.SolveWithParameters(search_parameters)
+print("TSP solved!")
 
 def get_tsp_paths(manager, routing, solution):
     tsp_paths = []
