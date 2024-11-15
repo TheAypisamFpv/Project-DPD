@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.gridspec as gridspec
 
 # Load the CSV file
-df = pd.read_csv('Tableau de valeurs.csv', sep=';')
+df = pd.read_csv('Valuetab.csv', sep=';')
 
 # Strip whitespace from column names
 df.columns = df.columns.str.strip()
