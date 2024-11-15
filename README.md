@@ -1,69 +1,87 @@
-# Rouen Delivery Route Optimization
 
-## Description
+# Delivery Route Optimizer and Tetris Truck Loader
 
-This project utilizes Python libraries to optimize delivery routes in Rouen, France, based on a set of delivery points. The program retrieves a road network using the OpenStreetMap data, calculates the optimal route for deliveries using the Traveling Salesman Problem (TSP) solver from Google OR-Tools, and visualizes the results on an interactive Folium map.
+This project consists of three main Python scripts designed to assist in logistics planning by optimizing delivery routes and simulating truck loading using a Tetris-like approach.
+
+## Table of Contents
+1. [Project Overview](#project-overview)
+2. [Features](#features)
+3. [Installation](#installation)
+4. [Usage](#usage)
+5. [Files Description](#files-description)
+6. [Dependencies](#dependencies)
+
+## Project Overview
+
+The project aims to streamline the process of logistics and delivery by providing tools to:
+- Optimize delivery routes based on time and distance using real-world map data.
+- Visualize delivery paths on an interactive map.
+- Simulate the loading of a truck using a Tetris-inspired approach, where each piece represents a package.
 
 ## Features
 
-- Downloads the road network for Rouen and calculates travel times based on speed limits.
-- Finds nearby cities within a specified radius.
-- Loads delivery points from an Excel file.
-- Calculates the shortest delivery route using the TSP algorithm.
-- Visualizes the route on an interactive map with markers for delivery points.
-- Outputs total delivery distance and duration.
-
-## Prerequisites
-
-Before running the project, ensure you have the following software installed:
-
-- Python 3.6 or higher
-- pip (Python package installer)
+- **AddressFinder**: Finds delivery points and optimizes routes using real-time geolocation data.
+- **Tetris Truck Loader**: Simulates the loading of packages in a truck using Tetris-like mechanics to maximize space utilization.
+- **Route Visualization**: Generates an interactive map displaying the optimized delivery routes and delivery points.
 
 ## Installation
 
-To install the required Python libraries, run the following command:
+To run this project, follow these steps:
 
-```bash
-pip install -r requirements.txt
-```
-
-Additionally, make sure you have an Excel file named `deliveries_data.xlsx` in the same directory as the script, structured as follows:
-
-| Package ID | lat     | long   |
-|------------|---------|--------|
-| 1          | 49.44   | 1.10   |
-| 2          | 49.45   | 1.11   |
+1. Clone the repository:
+    ```bash
+    git clone <repository-url>
+    cd <repository-folder>
+    ```
+2. Create a virtual environment and activate it:
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+    ```
+3. Install the required dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
 ## Usage
 
-1. Clone or download the repository to your local machine.
-2. Ensure the `deliveries_data.xlsx` file is in the project directory with the correct format.
-3. Run the Python script:
+### 1. AddressFinder.py
+Run this script to find and visualize optimal delivery routes based on provided delivery points.
 
 ```bash
-python delivery_route_optimization.py
+python AddressFinder.py
 ```
 
-4. After the execution, an HTML file named `rouen_deliveries_map.html` will be generated, which contains the interactive map of delivery routes.
+### 2. dpdTetris.py
+Run this script to simulate the Tetris-like truck loading.
 
-## Output
-
-The output will include:
-
-- A printed log of the optimal TSP path.
-- Total delivery distance and duration.
-- An interactive HTML map (`rouen_deliveries_map.html`) with the delivery points and optimized route visualized.
-
-## Example of Output
-
-```
-Optimal TSP path: [0, 1, 2, ...]
-Total delivery distance: 5000 meters
-Total delivery duration: 600 seconds
-Carte de Rouen avec points de livraison et réseau routier générée : 'rouen_deliveries_map.html'
+```bash
+python dpdTetris.py
 ```
 
-## Conclusion
+### 3. project.py
+Run this script to execute the complete process, from fetching delivery points to route optimization and visualization.
 
-This project provides an efficient way to optimize delivery routes using real road data, making it beneficial for logistics and delivery services. Future improvements could include implementing a user interface for easier data input and additional route optimization features.
+```bash
+python project.py
+```
+
+## Files Description
+
+- **AddressFinder.py**: 
+    - Handles geocoding and route optimization using Google API, OSMNX, and NetworkX.
+    - Visualizes the optimized routes on a map using Folium.
+
+- **dpdTetris.py**: 
+    - Implements a Tetris-like game where packages are represented as blocks.
+    - Simulates the loading process of a truck to maximize space utilization.
+
+- **project.py**: 
+    - Integrates functionalities from both scripts to perform delivery point analysis, optimize routes, and provide a terminal output of the delivery sequence.
+
+## Dependencies
+
+To install these dependencies, use:
+```bash
+pip install -r requirements.txt
+```
